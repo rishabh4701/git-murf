@@ -1,3 +1,13 @@
+// const express = require("express");
+const cors = require("cors");
+// require("dotenv").config();
+
+// const app = express();
+
+// ✅ allow requests from frontend (http://localhost:3000)
+
+
+
 // index.js
 const express = require("express");
 const axios = require("axios");
@@ -8,7 +18,9 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const app = express();
-app.use(bodyParser.json());
+app.use(cors());
+app.use(express.json());
+// app.use(bodyParser.json());
 
 // --- Route: Summarize GitHub PR and generate audio ---
 app.post("/api/summarize", async (req, res) => {
