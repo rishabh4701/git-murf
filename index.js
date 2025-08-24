@@ -16,13 +16,13 @@ app.post("/api/summarize", async (req, res) => {
     const { prUrl } = req.body;
 
     if (!prUrl) {
-      return res.status(400).json({ error: "❌ prUrl is required" });
+      return res.status(400).json({ error: "prUrl is required" });
     }
 
     // Extract repo info from PR URL
     const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
     if (!match) {
-      return res.status(400).json({ error: "❌ Invalid GitHub PR URL" });
+      return res.status(400).json({ error: "Invalid GitHub PR URL" });
     }
     const [, owner, repo, prNumber] = match;
 
@@ -49,7 +49,7 @@ app.post("/api/summarize", async (req, res) => {
       {
         text: summary,
         voiceId: "en-IN-aarav",
- // ✅ working sample voice
+ // working sample voice
 
         format: "mp3",
         sampleRate: 44100,
@@ -62,7 +62,7 @@ app.post("/api/summarize", async (req, res) => {
       }
     );
 
-    console.log("🔊 Murf API response:", murfResp.data);
+    console.log("Murf API response:", murfResp.data.audioFile);
 
     const audioUrl =
       murfResp.data.audioFileUrl || murfResp.data.data?.url || null;
@@ -73,7 +73,7 @@ app.post("/api/summarize", async (req, res) => {
     });
   } catch (err) {
     console.error(
-      "❌ Error in /api/summarize:",
+      "Error in /api/summarize:",
       err.response?.data || err.message
     );
     res
@@ -85,5 +85,5 @@ app.post("/api/summarize", async (req, res) => {
 // --- Start server ---
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
 });
