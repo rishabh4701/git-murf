@@ -2,3 +2,4 @@ node_modules/
 
 # To ignore our secret keys file
 .env
+test.js
