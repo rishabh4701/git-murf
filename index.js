@@ -25,9 +25,10 @@ app.post("/api/summarize", async (req, res) => {
     const murfUrl = "https://api.murf.ai/v1/speech/generate";
     
     const voicePalette = {
-      Positive: { voiceId: 'en-US-iris',style: 'Friendly' },
+      Positive: { voiceId: 'en-US-iris', style: 'Friendly' },
       Neutral:  { voiceId: 'en-IN-aarav', style: 'Conversational' },
-      Negative: { voiceId: 'en-US-julia', style: 'Angry' } 
+      Negative: { voiceId: 'en-US-julia', style: 'Angry' },
+      Mixed:    { voiceId: 'en-IN-aarav', style: 'Conversational' }
     };
 
     // 2. GITHUB: FETCH PR DATA 
@@ -45,15 +46,35 @@ app.post("/api/summarize", async (req, res) => {
     const commentsResp = await axios.get(prResp.data.comments_url, {
         headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" },
     });
-    
+    const diffResp = await axios.get(`${prUrl}.diff`, { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } });
+    const diffText = diffResp.data;
+
     const prTitle = prResp.data.title;
     const prBody = prResp.data.body || "No description provided.";
     const comments = commentsResp.data.map(c => `${c.user.login}: ${c.body}`).join('\n---\n');
-    const fullText = `Title: ${prTitle}\n\nDescription: ${prBody}\n\nComments:\n${comments}`;
+    const fullText = `Title: ${prTitle}\n\nDescription: ${prBody}\n\nComments:\n${comments}\n\nCode Changes (Diff):\n${diffText}`;
+
     
     // 3. GEMINI: SENTIMENT ANALYSIS 
     console.log('2. Analyzing sentiment...');
-    const sentimentPrompt = `Analyze the sentiment of the following GitHub comments. Respond with only a single word: "Positive", "Negative", or "Neutral".\n\nComments:\n${comments}`;
+    const sentimentPrompt = `
+      You are an expert in analyzing professional communication. The following text is a discussion from a GitHub pull request.
+      Analyze the overall sentiment of the comments. A critical comment is not necessarily negative if it's constructive.
+
+      Your task is to respond with ONLY a single word from the following options: "Positive", "Negative", "Neutral", or "Mixed".
+      - Use "Positive" for generally encouraging and approved conversations.
+      - Use "Negative" for conversations with significant disagreement or problems.
+      - Use "Neutral" for purely factual, technical discussions.
+      - Use "Mixed" for conversations that contain both strong positive and strong negative elements.
+
+      Here are some examples:
+      Example 1: "Comments: LGTM. Great work! Approved." -> Response: Positive
+      Example 2: "Comments: This approach is wrong. It will cause performance issues. Please refactor it." -> Response: Negative
+      Example 3: "Comments: The TTL is now set to 60 seconds." -> Response: Neutral
+
+      Now, analyze the following comments and provide your single-word response:
+      \n\nComments:\n${comments}
+    `;
     const sentimentResponse = await axios.post(geminiUrl, {
       contents: [{ parts: [{ text: sentimentPrompt }] }],
     });
@@ -63,7 +84,19 @@ app.post("/api/summarize", async (req, res) => {
 
     // 4. GEMINI: SUMMARIZATION 
     console.log('3. Summarizing text...');
-    const summaryPrompt = `Concisely summarize the following GitHub pull request conversation:\n\n${fullText}`;
+    const summaryPrompt = `
+      You are a helpful AI assistant for a voice-based application. Your task is to summarize a GitHub pull request.
+      Analyze the provided conversation and code diff.
+      
+      Your response MUST follow these rules:
+      1.  Generate a response in clean, plain text only with the improvements that has to be made if any.
+      2.  DO NOT use any markdown, special symbols, asterisks, or backticks. Your entire response will be read aloud by a text-to-speech engine.
+      3.  Keep common technical and programming terms (like 'component', 'API', 'variable', 'function', 'database', 'bug fix', 'UI', 'test') in English. Do not translate them.
+      
+      Now, provide a concise summary of the following pull request:
+      \n\n${fullText}
+    `;
+    
     const summaryResponse = await axios.post(geminiUrl, {
       contents: [{ parts: [{ text: summaryPrompt }] }],
     });
