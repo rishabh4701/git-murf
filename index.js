@@ -2,7 +2,7 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors"); 
 const dotenv = require("dotenv");
-
+const { translateAndSynthesize } = require('./translation');
 dotenv.config();
 
 const app = express();
@@ -126,6 +126,27 @@ app.post("/api/summarize", async (req, res) => {
   } catch (err) {
     console.error("Error in /api/summarize:", err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data || "Something went wrong" });
+  }
+});
+
+app.post("/api/translate", async (req, res) => {
+  try {
+    const { summaryText, targetLanguage } = req.body;
+
+    if (!summaryText || !targetLanguage) {
+      return res.status(400).json({ error: "summaryText and targetLanguage are required" });
+    }
+
+    // Call our new, separate service to do all the hard work
+    const result = await translateAndSynthesize(summaryText, targetLanguage);
+
+    console.log('3. Success! Sending translated audio URL to frontend.');
+    return res.json(result);
+
+  } catch (err) {
+    // Our service will throw an error if something goes wrong, and we catch it here.
+    console.error("Error in /api/translate:", err.message);
+    res.status(500).json({ error: err.message || "Something went wrong" });
   }
 });
 
