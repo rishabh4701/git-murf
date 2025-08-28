@@ -1,4 +1,3 @@
-// translationService.js
 const axios = require('axios');
 
 const languageVoiceMap = {
