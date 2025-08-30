@@ -1,37 +1,45 @@
 const express = require("express");
 const axios = require("axios");
-const cors = require("cors"); 
+const cors = require("cors");
 const dotenv = require("dotenv");
-const { translateAndSynthesize } = require('./translation');
+
 dotenv.config();
 
 const app = express();
-app.use(cors()); 
-app.use(express.json()); 
+app.use(cors());
+app.use(express.json());
+
+
+const languageVoiceMap = {
+  'en': { voiceId: 'en-IN-aarav', style: 'Conversational' },
+  'hi': { voiceId: 'hi-IN-ayushi', style: 'Conversational' }, 
+  'es': { voiceId: 'es-ES-elvira', style: 'Conversational' },
+  'fr': { voiceId: 'fr-FR-adélie',style: 'Conversational' },
+  'de': { voiceId: 'de-DE-matthias', style: 'Conversational' }
+};
+
 
 app.post("/api/summarize", async (req, res) => {
   try {
-    // 1. SETUP & INITIALIZATION 
-    const { prUrl } = req.body;
+   
+    const { prUrl, targetLanguage = 'en' } = req.body;
     if (!prUrl) {
       return res.status(400).json({ error: "prUrl is required" });
     }
 
+    const selectedVoice = languageVoiceMap[targetLanguage];
+    if (!selectedVoice) {
+      return res.status(400).json({ error: "Unsupported language" });
+    }
+
+    
     const GITHUB_TOKEN = process.env.GITHUB_API_KEY;
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     const MURF_API_KEY = process.env.MURF_API_KEY;
-
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
     const murfUrl = "https://api.murf.ai/v1/speech/generate";
-    
-    const voicePalette = {
-      Positive: { voiceId: 'en-US-iris', style: 'Friendly' },
-      Neutral:  { voiceId: 'en-IN-aarav', style: 'Conversational' },
-      Negative: { voiceId: 'en-US-julia', style: 'Angry' },
-      Mixed:    { voiceId: 'en-IN-aarav', style: 'Conversational' }
-    };
 
-    // 2. GITHUB: FETCH PR DATA 
+    
     console.log('1. Parsing and fetching from GitHub...');
     const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
     if (!match) {
@@ -39,89 +47,62 @@ app.post("/api/summarize", async (req, res) => {
     }
     const [, owner, repo, prNumber] = match;
 
-    const prResp = await axios.get(
-      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
-      { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } }
-    );
-    const commentsResp = await axios.get(prResp.data.comments_url, {
-        headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" },
-    });
-    const diffResp = await axios.get(`${prUrl}.diff`, { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } });
-    const diffText = diffResp.data;
-
+    const prApiUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`;
+    const prResp = await axios.get(prApiUrl, { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } });
+    const commentsResp = await axios.get(prResp.data.comments_url, { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } });
+    const diffResp = await axios.get(`${prApiUrl}.diff`, { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } });
+    
     const prTitle = prResp.data.title;
     const prBody = prResp.data.body || "No description provided.";
     const comments = commentsResp.data.map(c => `${c.user.login}: ${c.body}`).join('\n---\n');
+    const diffText = diffResp.data;
     const fullText = `Title: ${prTitle}\n\nDescription: ${prBody}\n\nComments:\n${comments}\n\nCode Changes (Diff):\n${diffText}`;
 
     
-    // 3. GEMINI: SENTIMENT ANALYSIS 
-    console.log('2. Analyzing sentiment...');
-    const sentimentPrompt = `
-      You are an expert in analyzing professional communication. The following text is a discussion from a GitHub pull request.
-      Analyze the overall sentiment of the comments. A critical comment is not necessarily negative if it's constructive.
-
-      Your task is to respond with ONLY a single word from the following options: "Positive", "Negative", "Neutral", or "Mixed".
-      - Use "Positive" for generally encouraging and approved conversations.
-      - Use "Negative" for conversations with significant disagreement or problems.
-      - Use "Neutral" for purely factual, technical discussions.
-      - Use "Mixed" for conversations that contain both strong positive and strong negative elements.
-
-      Here are some examples:
-      Example 1: "Comments: LGTM. Great work! Approved." -> Response: Positive
-      Example 2: "Comments: This approach is wrong. It will cause performance issues. Please refactor it." -> Response: Negative
-      Example 3: "Comments: The TTL is now set to 60 seconds." -> Response: Neutral
-
-      Now, analyze the following comments and provide your single-word response:
-      \n\nComments:\n${comments}
-    `;
-    const sentimentResponse = await axios.post(geminiUrl, {
-      contents: [{ parts: [{ text: sentimentPrompt }] }],
-    });
-    const sentiment = sentimentResponse.data.candidates[0].content.parts[0].text.trim().replace(/"/g, '');
-    const selectedVoice = voicePalette[sentiment] || voicePalette.Neutral;
-    console.log(`Sentiment detected: ${sentiment}. Voice selected: ${selectedVoice.voiceId} (${selectedVoice.style})`);
-
-    // 4. GEMINI: SUMMARIZATION 
-    console.log('3. Summarizing text...');
-    const summaryPrompt = `
-      You are a helpful AI assistant for a voice-based application. Your task is to summarize a GitHub pull request.
-      Analyze the provided conversation and code diff.
+    console.log(`2. Summarizing and translating to ${targetLanguage}...`);
+    const finalPrompt = `
+      You are an expert multilingual AI assistant. Your primary function is to summarize and translate technical text for a voice application.
       
-      Your response MUST follow these rules:
-      1.  Generate a response in clean, plain text only with the improvements that has to be made if any.
-      2.  DO NOT use any markdown, special symbols, asterisks, or backticks. Your entire response will be read aloud by a text-to-speech engine.
-      3.  Keep common technical and programming terms (like 'component', 'API', 'variable', 'function', 'database', 'bug fix', 'UI', 'test') in English. Do not translate them.
+      Your task has two steps:
+      1. First, internally create a concise summary of the provided GitHub pull request data.
+      2. Second, you MUST translate that summary into the language with the code: "${targetLanguage}".
       
-      Now, provide a concise summary of the following pull request:
+      Your final output MUST be ONLY the translated text and nothing else.
+      
+      CRITICAL RULES for the final output:
+      - The text must be clean, plain text, suitable for a text-to-speech engine (NO markdown, symbols, asterisks, or backticks).
+      - When translating, keep common English technical and programming terms (like 'component', 'API', 'bug fix', 'UI', 'test', 'cache', 'server', 'variable', 'function') in their original English form.
+      
+      Example:
+      If the English summary is "This bug fix for the UI component is approved" and the target language is "hi", your final output should be "यह UI component के लिए bug fix स्वीकृत है।".
+
+      Now, process the following data and provide only the final, translated summary:
       \n\n${fullText}
     `;
-    
-    const summaryResponse = await axios.post(geminiUrl, {
-      contents: [{ parts: [{ text: summaryPrompt }] }],
-    });
-    const summary = summaryResponse.data.candidates[0].content.parts[0].text;
 
-    // 5. MURF AI: GENERATE SPEECH 
-    console.log('4. Generating voice...');
+    const aiResponse = await axios.post(geminiUrl, {
+      contents: [{ parts: [{ text: finalPrompt }] }],
+    });
+    const final_text = aiResponse.data.candidates[0].content.parts[0].text.trim();
+  
+    
+    console.log(`3. Generating voice with ${selectedVoice.voiceId}...`);
     const murfResp = await axios.post(
       murfUrl,
       {
-        text: summary,
-        voiceId: selectedVoice.voiceId, 
-        style: selectedVoice.style, 
+        text: final_text,
+        voiceId: selectedVoice.voiceId,
+        style: selectedVoice.style,
         format: "mp3",
         sampleRate: 44100,
       },
-      {
-        headers: { "api-key": process.env.MURF_API_KEY, "Content-Type": "application/json" }
-      }
+      { headers: { "api-key": MURF_API_KEY, "Content-Type": "application/json" } }
     );
     const audioUrl = murfResp.data.audioUrl || murfResp.data.audioFile || null;
 
-    // 6. FINAL RESPONSE 
-    console.log('5. Success! Sending data to frontend.');
-    return res.json({ summary, audioUrl, sentiment }); 
+   
+    console.log('4. Success! Sending data to frontend.');
+    return res.json({ summary: final_text, audioUrl });
 
   } catch (err) {
     console.error("Error in /api/summarize:", err.response?.data || err.message);
@@ -129,28 +110,7 @@ app.post("/api/summarize", async (req, res) => {
   }
 });
 
-app.post("/api/translate", async (req, res) => {
-  try {
-    const { summaryText, targetLanguage } = req.body;
 
-    if (!summaryText || !targetLanguage) {
-      return res.status(400).json({ error: "summaryText and targetLanguage are required" });
-    }
-
-    // Call our new, separate service to do all the hard work
-    const result = await translateAndSynthesize(summaryText, targetLanguage);
-
-    console.log('3. Success! Sending translated audio URL to frontend.');
-    return res.json(result);
-
-  } catch (err) {
-    // Our service will throw an error if something goes wrong, and we catch it here.
-    console.error("Error in /api/translate:", err.message);
-    res.status(500).json({ error: err.message || "Something went wrong" });
-  }
-});
-
-// --- Start server ---
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
