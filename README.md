@@ -55,6 +55,7 @@ npm run start
 # Run frontend
 npm start
 
+```
 Acknowledgements-
 
 Murf AI – Speech synthesis
