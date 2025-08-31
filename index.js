@@ -6,7 +6,9 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: "https://git-oracle-frontend.vercel.app"
+}));
 app.use(express.json());
 
 
