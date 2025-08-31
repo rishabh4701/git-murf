@@ -79,6 +79,7 @@ app.post("/api/summarize", async (req, res) => {
         - Maintain **plain text** only (no markdown, symbols, asterisks, or backticks) suitable for text-to-speech.
 
       3. Translate the final summary into the language with the code: "${targetLanguage}":
+        - For "hi" (Hindi), the output must be written strictly in **Devanagari script** (हिन्दी), not Latin letters.
         - Keep technical and programming terms in English (like 'component', 'API', 'bug fix', 'UI', 'test', 'cache', 'server', 'variable', 'function').
 
       Output requirements:
