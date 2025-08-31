@@ -57,6 +57,6 @@ npm start
 
 ```
 **Acknowledgements**
-**Murf AI** → Speech synthesis
-**Google Gemini** → Summarization & translation
-**GitHub API** → PR data
+- **Murf AI** → Speech synthesis
+- **Google Gemini** → Summarization & translation
+- **GitHub API** → PR data
