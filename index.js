@@ -12,16 +12,16 @@ app.use(express.json());
 
 const languageVoiceMap = {
   'en': { voiceId: 'en-IN-aarav', style: 'Conversational' },
-  'hi': { voiceId: 'hi-IN-ayushi', style: 'Conversational' }, 
+  'hi': { voiceId: 'hi-IN-ayushi', style: 'Conversational' },
   'es': { voiceId: 'es-ES-elvira', style: 'Conversational' },
-  'fr': { voiceId: 'fr-FR-adélie',style: 'Conversational' },
+  'fr': { voiceId: 'fr-FR-adélie', style: 'Conversational' },
   'de': { voiceId: 'de-DE-matthias', style: 'Conversational' }
 };
 
 
 app.post("/api/summarize", async (req, res) => {
   try {
-   
+
     const { prUrl, targetLanguage = 'en' } = req.body;
     if (!prUrl) {
       return res.status(400).json({ error: "prUrl is required" });
@@ -32,14 +32,14 @@ app.post("/api/summarize", async (req, res) => {
       return res.status(400).json({ error: "Unsupported language" });
     }
 
-    
+
     const GITHUB_TOKEN = process.env.GITHUB_API_KEY;
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     const MURF_API_KEY = process.env.MURF_API_KEY;
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
     const murfUrl = "https://api.murf.ai/v1/speech/generate";
 
-    
+
     console.log('1. Parsing and fetching from GitHub...');
     const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
     if (!match) {
@@ -51,41 +51,49 @@ app.post("/api/summarize", async (req, res) => {
     const prResp = await axios.get(prApiUrl, { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } });
     const commentsResp = await axios.get(prResp.data.comments_url, { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } });
     const diffResp = await axios.get(`${prApiUrl}.diff`, { headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "Git-Oracle-App" } });
-    
+
     const prTitle = prResp.data.title;
     const prBody = prResp.data.body || "No description provided.";
     const comments = commentsResp.data.map(c => `${c.user.login}: ${c.body}`).join('\n---\n');
     const diffText = diffResp.data;
     const fullText = `Title: ${prTitle}\n\nDescription: ${prBody}\n\nComments:\n${comments}\n\nCode Changes (Diff):\n${diffText}`;
 
-    
+
     console.log(`2. Summarizing and translating to ${targetLanguage}...`);
     const finalPrompt = `
-      You are an expert multilingual AI assistant. Your primary function is to summarize and translate technical text for a voice application.
-      
-      Your task has two steps:
-      1. First, internally create a concise summary of the provided GitHub pull request data.
-      2. Second, you MUST translate that summary into the language with the code: "${targetLanguage}".
-      
-      Your final output MUST be ONLY the translated text and nothing else.
-      
-      CRITICAL RULES for the final output:
-      - The text must be clean, plain text, suitable for a text-to-speech engine (NO markdown, symbols, asterisks, or backticks).
-      - When translating, keep common English technical and programming terms (like 'component', 'API', 'bug fix', 'UI', 'test', 'cache', 'server', 'variable', 'function') in their original English form.
-      
-      Example:
-      If the English summary is "This bug fix for the UI component is approved" and the target language is "hi", your final output should be "यह UI component के लिए bug fix स्वीकृत है।".
+      You are an expert multilingual AI assistant specialized in summarizing technical content and code changes for a voice application. 
 
-      Now, process the following data and provide only the final, translated summary:
-      \n\n${fullText}
+      Your task has three main steps:
+
+      1. Analyze the provided GitHub pull request data (title, description, comments, and code diff) and identify:
+        - The key purpose of the PR.
+        - Any major bug fixes, feature additions, or improvements.
+        - Specific lines or sections in the code where important changes occurred or where issues might arise.
+        - Important comments or discussion points from reviewers that impact the PR.
+
+      2. Produce a concise, high-quality, and reliable summary:
+        - The summary should provide **clear insights** that allow a user to understand the PR without reading the full content.
+        - Highlight the most **impactful code changes** and any areas that require attention.
+        - Maintain **plain text** only (no markdown, symbols, asterisks, or backticks) suitable for text-to-speech.
+
+      3. Translate the final summary into the language with the code: "${targetLanguage}":
+        - Keep technical and programming terms in English (like 'component', 'API', 'bug fix', 'UI', 'test', 'cache', 'server', 'variable', 'function').
+
+      Output requirements:
+      - The final output must be **only the translated summary text**, nothing else.
+      - The text must be clean, concise, and ready for reading aloud in a voice application.
+      - Avoid any extra explanations or meta-text.
+
+      Now, analyze the following GitHub pull request data and produce a **voice-friendly, actionable summary**:
+      ${fullText}
     `;
 
     const aiResponse = await axios.post(geminiUrl, {
       contents: [{ parts: [{ text: finalPrompt }] }],
     });
     const final_text = aiResponse.data.candidates[0].content.parts[0].text.trim();
-  
-    
+
+
     console.log(`3. Generating voice with ${selectedVoice.voiceId}...`);
     const murfResp = await axios.post(
       murfUrl,
@@ -100,7 +108,7 @@ app.post("/api/summarize", async (req, res) => {
     );
     const audioUrl = murfResp.data.audioUrl || murfResp.data.audioFile || null;
 
-   
+
     console.log('4. Success! Sending data to frontend.');
     return res.json({ summary: final_text, audioUrl });
 
