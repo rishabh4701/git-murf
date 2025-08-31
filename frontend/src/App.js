@@ -5,7 +5,9 @@ import Lottie from "lottie-react";
 import discoAnim from "./assets/ball.json";
 import { FaPlay, FaPause, FaCircleInfo } from "react-icons/fa6";
 
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:3001";
+const API_BASE = process.env.NODE_ENV === 'production' 
+  ? 'https://git-oracle-backend.onrender.com' 
+  : 'http://localhost:3001';
 
 export default function App() {
   const [prUrl, setPrUrl] = useState(() => localStorage.getItem("prUrl") || "");
