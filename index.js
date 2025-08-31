@@ -62,34 +62,27 @@ app.post("/api/summarize", async (req, res) => {
 
 
     console.log(`2. Summarizing and translating to ${targetLanguage}...`);
-    const finalPrompt = `
-      You are an expert multilingual AI assistant specialized in summarizing technical content and code changes for a voice application. 
+    let finalPrompt;
+    if (targetLanguage === 'hi') {
 
-      Your task has three main steps:
+      finalPrompt = `
+        You are an expert English-to-Hindi translator. Your primary task is to take an English summary of a GitHub PR and translate it accurately into Hindi, using the Devanagari script.
+        CRITICAL RULE 1: Your final output MUST BE ONLY in Hindi. Do not include the English summary.
+        CRITICAL RULE 2: Keep common English technical terms (like 'component', 'API', 'bug fix', 'UI', 'test') in their original English form (Hinglish).
+        Example: If the input summary is "This is a UI bug fix", your output should be "यह एक UI bug fix है।".
+        Now, first summarize the following data in English internally, and then provide ONLY the final Hindi translation of that summary:\n\n${fullText}
+      `;
+    } else {
+      // The original prompt that works for English and other languages
+      finalPrompt = `
+        You are an expert multilingual AI assistant...
+        Your task is to first summarize the following GitHub pull request.
+        Then, you MUST translate that summary into the language with the code: "${targetLanguage}".
+        CRITICAL RULES: The final output must be only the translated summary text. The text must be clean, plain text. Keep common English technical terms in English.
+        Now, process the following pull request data:\n\n${fullText}
+      `;
+    }
 
-      1. Analyze the provided GitHub pull request data (title, description, comments, and code diff) and identify:
-        - The key purpose of the PR.
-        - Any major bug fixes, feature additions, or improvements.
-        - Specific lines or sections in the code where important changes occurred or where issues might arise.
-        - Important comments or discussion points from reviewers that impact the PR.
-
-      2. Produce a concise, high-quality, and reliable summary:
-        - The summary should provide **clear insights** that allow a user to understand the PR without reading the full content.
-        - Highlight the most **impactful code changes** and any areas that require attention.
-        - Maintain **plain text** only (no markdown, symbols, asterisks, or backticks) suitable for text-to-speech.
-
-      3. Translate the final summary into the language with the code: "${targetLanguage}":
-        - For different languages strictly translate to that particular language.
-        - Keep technical and programming terms in English (like 'component', 'API', 'bug fix', 'UI', 'test', 'cache', 'server', 'variable', 'function').
-
-      Output requirements:
-      - The final output must be **only the translated summary text**, nothing else.
-      - The text must be clean, concise, and ready for reading aloud in a voice application.
-      - Avoid any extra explanations or meta-text.
-
-      Now, analyze the following GitHub pull request data and produce a **voice-friendly, actionable summary**:
-      ${fullText}
-    `;
 
     const aiResponse = await axios.post(geminiUrl, {
       contents: [{ parts: [{ text: finalPrompt }] }],
